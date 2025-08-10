@@ -1,51 +1,62 @@
 #!/usr/bin/env bash
-#
-# Common utility functions for VPS setup
-#
 
-LOGFILE="/var/log/vps-autosetup.log"
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-log() {
-  local level="$1"
-  shift
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $*" | tee -a "$LOGFILE"
+info() {
+  echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-install_package() {
-  local pkg="$1"
-  if ! dpkg -s "$pkg" &>/dev/null; then
-    log INFO "Installing package: $pkg"
-    apt install -y "$pkg"
-  else
-    log INFO "Package $pkg is already installed."
+success() {
+  echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+warn() {
+  echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+error() {
+  echo -e "${RED}[ERROR]${NC} $1" >&2
+}
+
+confirm() {
+  while true; do
+    read -rp "$1 [y/n]: " yn
+    case $yn in
+      [Yy]*) return 0 ;;
+      [Nn]*) return 1 ;;
+      *) echo "Please answer yes or no." ;;
+    esac
+  done
+}
+
+check_root() {
+  if [[ $EUID -ne 0 ]]; then
+    error "This script must be run as root."
+    exit 1
   fi
 }
 
-restart_service() {
-  local svc="$1"
-  systemctl daemon-reload
-  systemctl enable "$svc"
-  systemctl restart "$svc"
-  log INFO "Service $svc restarted and enabled."
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
 }
 
-enable_ipv6() {
-  sysctl -w net.ipv6.conf.all.disable_ipv6=0
-  sysctl -w net.ipv6.conf.default.disable_ipv6=0
-  log INFO "IPv6 enabled."
+require_command() {
+  if ! command_exists "$1"; then
+    error "Required command '$1' not found. Please install it."
+    exit 1
+  fi
 }
 
-disable_ipv6() {
-  sysctl -w net.ipv6.conf.all.disable_ipv6=1
-  sysctl -w net.ipv6.conf.default.disable_ipv6=1
-  log INFO "IPv6 disabled."
-}
-
-check_port() {
-  local port="$1"
-  if ss -tuln | grep -q ":$port "; then
-    return 0
+install_package_if_missing() {
+  if ! dpkg -s "$1" >/dev/null 2>&1; then
+    info "Installing package $1..."
+    apt-get install -y "$1"
   else
-    return 1
+    info "Package $1 is already installed."
   fi
 }
